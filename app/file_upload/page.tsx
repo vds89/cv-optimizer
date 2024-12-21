@@ -7,8 +7,6 @@ import {
 import { useEdgeStore } from '@/lib/edgestore';
 import { useState } from 'react';
 import { AssemblyAI } from 'assemblyai';
-import { initEdgeStoreSdk } from '@edgestore/server/core';
-
 
 export default function MultiFileDropzoneUsage() {
   const [fileStates, setFileStates] = useState<FileState[]>([]);

@@ -1,6 +1,6 @@
 import { initEdgeStore } from '@edgestore/server';
 import { createEdgeStoreNextHandler } from '@edgestore/server/adapters/next/app';
-import { edgeStoreRawSdk } from '@edgestore/server/core';
+
 const es = initEdgeStore.create();
 
 /**
