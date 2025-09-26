@@ -65,6 +65,45 @@ export default function AudioTranscriptionApp() {
     );
   };
 
+  const pollTranscriptionStatus = async (transcriptId: string, audioFileId: string) => {
+    const maxAttempts = 60; // Poll for up to 5 minutes (60 * 5 seconds)
+    let attempts = 0;
+
+    const poll = async (): Promise<void> => {
+      try {
+        if (attempts >= maxAttempts) {
+          throw new Error('Transcription timeout - please try again');
+        }
+
+        const response = await fetch(`/api/transcribe?id=${transcriptId}`);
+        const data = await response.json();
+
+        if (data.status === 'completed' && data.transcription) {
+          updateFileState(audioFileId, {
+            state: 'completed',
+            transcription: data.transcription,
+          });
+          return;
+        }
+
+        if (data.status === 'error') {
+          throw new Error(data.error || 'Transcription failed');
+        }
+
+        // Still processing, poll again in 5 seconds
+        attempts++;
+        setTimeout(() => poll(), 5000);
+      } catch (error) {
+        updateFileState(audioFileId, {
+          state: 'error',
+          error: error instanceof Error ? error.message : 'Transcription check failed',
+        });
+      }
+    };
+
+    poll();
+  };
+
   const processFile = async (audioFile: AudioFile) => {
     try {
       // Step 1: Upload to EdgeStore
@@ -83,7 +122,7 @@ export default function AudioTranscriptionApp() {
         progress: 100 
       });
 
-      // Step 2: Transcribe
+      // Step 2: Submit transcription job
       const response = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -97,16 +136,23 @@ export default function AudioTranscriptionApp() {
         }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Transcription failed');
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server error: Expected JSON but got ${contentType}. Check Vercel logs.`);
       }
 
-      updateFileState(audioFile.id, {
-        state: 'completed',
-        transcription: data.transcription,
-      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to submit transcription');
+      }
+
+      // Step 3: Poll for results
+      console.log('Transcription submitted, ID:', data.transcriptId);
+      await pollTranscriptionStatus(data.transcriptId, audioFile.id);
 
     } catch (error) {
       updateFileState(audioFile.id, {
@@ -151,7 +197,7 @@ export default function AudioTranscriptionApp() {
       case 'uploading':
         return `Uploading... ${file.progress}%`;
       case 'transcribing':
-        return 'Transcribing audio...';
+        return 'Transcribing audio... (this may take a few minutes)';
       case 'completed':
         return 'Transcription complete';
       case 'error':

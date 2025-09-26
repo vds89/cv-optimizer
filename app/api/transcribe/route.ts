@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AssemblyAI } from 'assemblyai';
 
-// This runs on the server side, so environment variables are accessible
+// Initialize AssemblyAI client
 const client = new AssemblyAI({
   apiKey: process.env.ASSEMBLY_AI_API_KEY!,
 });
 
+// POST: Submit transcription job (returns immediately)
 export async function POST(request: NextRequest) {
   try {
+    // Check if API key exists
+    if (!process.env.ASSEMBLY_AI_API_KEY) {
+      console.error('ASSEMBLY_AI_API_KEY is not set');
+      return NextResponse.json(
+        { error: 'API key not configured. Please set ASSEMBLY_AI_API_KEY in environment variables.' },
+        { status: 500 }
+      );
+    }
+
     const { fileUrl, options } = await request.json();
 
     if (!fileUrl) {
@@ -22,39 +32,21 @@ export async function POST(request: NextRequest) {
       speaker_labels: options?.speakerLabels ?? true,
       punctuate: options?.punctuate ?? true,
       language_detection: options?.languageDetection ?? true,
-      // Add more options as needed
       format_text: true,
       disfluencies: false,
     };
 
     console.log('Starting transcription for:', fileUrl);
     
-    const transcript = await client.transcripts.transcribe(params);
+    // Submit transcription job (doesn't wait for completion)
+    const transcript = await client.transcripts.submit(params);
 
-    if (transcript.status === 'error') {
-      console.error('Transcription error:', transcript.error);
-      return NextResponse.json(
-        { error: 'Transcription failed', details: transcript.error },
-        { status: 500 }
-      );
-    }
-
-    if (!transcript.text) {
-      return NextResponse.json(
-        { error: 'No transcription text generated' },
-        { status: 500 }
-      );
-    }
-
+    // Return the transcript ID immediately
     return NextResponse.json({
       success: true,
-      transcription: transcript.text,
-      confidence: transcript.confidence,
-      duration: transcript.audio_duration,
-      // Include speaker labels if requested
-      ...(options?.speakerLabels && transcript.utterances && {
-        speakers: transcript.utterances
-      })
+      transcriptId: transcript.id,
+      status: transcript.status,
+      message: 'Transcription job submitted successfully'
     });
 
   } catch (error) {
@@ -62,7 +54,70 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(
       { 
-        error: 'Internal server error',
+        error: 'Failed to submit transcription',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: process.env.NODE_ENV === 'development' ? String(error) : undefined
+      },
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      }
+    );
+  }
+}
+
+// GET: Check transcription status and get result
+export async function GET(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const transcriptId = searchParams.get('id');
+
+    if (!transcriptId) {
+      return NextResponse.json(
+        { error: 'Transcript ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get transcript status
+    const transcript = await client.transcripts.get(transcriptId);
+
+    if (transcript.status === 'error') {
+      return NextResponse.json(
+        { 
+          success: false,
+          status: 'error',
+          error: transcript.error || 'Transcription failed'
+        },
+        { status: 500 }
+      );
+    }
+
+    if (transcript.status === 'completed' && transcript.text) {
+      return NextResponse.json({
+        success: true,
+        status: 'completed',
+        transcription: transcript.text,
+        confidence: transcript.confidence,
+        duration: transcript.audio_duration,
+      });
+    }
+
+    // Still processing
+    return NextResponse.json({
+      success: true,
+      status: transcript.status, // 'queued' or 'processing'
+      message: `Transcription is ${transcript.status}...`
+    });
+
+  } catch (error) {
+    console.error('API status check error:', error);
+    
+    return NextResponse.json(
+      { 
+        error: 'Failed to check transcription status',
         message: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
