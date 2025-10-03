@@ -65,7 +65,7 @@ export default function AudioTranscriptionApp() {
     );
   };
 
-  const pollTranscriptionStatus = async (transcriptId: string, audioFileId: string) => {
+  const pollTranscriptionStatus = async (transcriptId: string, audioFileId: string, fileName: string) => {
     const maxAttempts = 60; // Poll for up to 5 minutes (60 * 5 seconds)
     let attempts = 0;
 
@@ -83,6 +83,18 @@ export default function AudioTranscriptionApp() {
             state: 'completed',
             transcription: data.transcription,
           });
+          
+          // Auto-download transcription
+          const blob = new Blob([data.transcription], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${fileName.replace(/\.[^/.]+$/, '')}_transcription.txt`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
           return;
         }
 
@@ -152,7 +164,7 @@ export default function AudioTranscriptionApp() {
 
       // Step 3: Poll for results
       console.log('Transcription submitted, ID:', data.transcriptId);
-      await pollTranscriptionStatus(data.transcriptId, audioFile.id);
+      await pollTranscriptionStatus(data.transcriptId, audioFile.id, audioFile.file.name);
 
     } catch (error) {
       updateFileState(audioFile.id, {
