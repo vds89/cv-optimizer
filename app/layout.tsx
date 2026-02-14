@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { EdgeStoreProvider } from '../app/lib/edgestore';
+import { EdgeStoreProvider } from '@/lib/edgestore';
 import "./globals.css";
 import { Roboto } from 'next/font/google';
 
