@@ -1,12 +1,9 @@
+// next.config.ts  ← KEEP this file, just edit it
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
-    ignoreDuringBuilds: true,
-  },
+  // ... keep any other config you have here
+  // just delete the eslint: { ... } block
 };
 
 export default nextConfig;
